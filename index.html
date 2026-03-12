@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Convolution Visualizer</title>
+<style>
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+}
+.pool-cell {
+    background: #e0ccff; /* light purple */
+    color: #800080;
+}
+#container {
+    display: flex;
+    height: 100vh;
+}
+#sidebar {
+    width: 260px;
+    padding: 20px;
+    background: #f5f5f5;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    box-sizing: border-box;
+}
+#sidebar h1 {
+    font-size: 1.4em;
+    margin-top: 0;
+    margin-bottom: 20px;
+    text-align: center;
+}
+#main {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+}
+#controls label {
+    display: block;
+    margin-bottom: 12px;
+    background: white;
+    padding: 6px 8px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+#controls input,
+#controls select {
+    width: 6em;
+    padding: 4px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+#controls button#play {
+    margin-top: 10px;
+}
+.btn3d {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px #999;
+    transition: all 0.1s;
+}
+.btn3d:active {
+    box-shadow: 0 2px #666;
+    transform: translateY(2px);
+}
+#play {
+    background: linear-gradient(#4CAF50, #2E7D32);
+    color: white;
+}
+.nav-buttons {
+    text-align: center;
+    margin-top: 20px;
+}
+.nav-buttons button {
+    margin: 0 10px;
+}
+.nav-buttons > div {
+    margin: 5px 0;
+}
+.big-btn {
+    padding: 12px 24px;
+    font-size: 1.2em;
+}
+.prev-next {
+    background: linear-gradient(#2196F3, #1976D2);
+    color: white;
+}
+.randomize {
+    background: linear-gradient(#ccc, #999);
+    color: #333;
+}
+#vis {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+#grids {
+    display: flex;
+    align-items: flex-start;
+}
+#input-grid {
+    margin-right: 20px;
+}
+.cell {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid black;
+    font-family: monospace;
+    box-sizing: border-box;
+}
+.input-cell {
+    background: #e0e0ff; /* light blue */
+    color: #0000ff;
+}
+.pad-cell {
+    background: #f0f0f0; /* light grey */
+    color: #808080;
+}
+.overlap-cell {
+    background: #ffe5cc; /* light orange */
+}
+.output-cell {
+    background: #ccffcc; /* light green */
+    color: #008000;
+}
+span.inp {
+    color: #0000ff;
+}
+span.ker {
+    color: #ff0000;
+}
+#kernel-overlay {
+    position: absolute;
+    border: 2px solid red;
+    pointer-events: none;
+}
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="sidebar">
+    <h1>Convolution Visualizer</h1>
+    <div id="controls">
+        <label>Input size (HxW):
+            <input id="input_h" type="number" value="5" min="1" /> ×
+            <input id="input_w" type="number" value="5" min="1" />
+        </label>
+        <label>Kernel size (HxW):
+            <input id="kernel_h" type="number" value="3" min="1" /> ×
+            <input id="kernel_w" type="number" value="3" min="1" />
+        </label>
+        <label>Stride:
+            <input id="stride" type="number" value="1" min="1" />
+        </label>
+        <label>Padding amount:
+            <input id="padding" type="number" value="0" min="0" />
+        </label>
+        <label>Padding type:
+            <select id="pad_type">
+                <option value="zero" selected>zero</option>
+                <option value="edge">edge</option>
+                <option value="reflect">reflect</option>
+            </select>
+        </label>
+        <label>Pooling type:
+            <select id="pool_type">
+                <option value="max" selected>max-pooling</option>
+                <option value="avg">avg-pooling</option>
+            </select>
+        </label>
+        <label>Pool size:
+            <input id="pool_size" type="number" value="2" min="1" />
+        </label>
+        <button id="play" class="btn3d">Play</button>
+    </div>
+  </div>
+  <div id="main">
+    <div id="vis"></div>
+  </div>
+</div>
+<script>
+(function() {
+    const CELL = 40;
+    let inputArr, kernelArr, outputArr, paddedArr, padMask;
+    let strideVal, padVal, padType;
+    // pooling state
+    let poolType, poolSize, poolArr, poolH, poolW;
+    let filledOutputs;
+    
+    let positions, posIndex, kpos;
+    let prevOverlaps = [];
+
+    function randInt() {
+        return Math.floor(Math.random() * 21) - 10;
+    }
+
+    function applyPadding(arr, pad, type) {
+        const ih = arr.length;
+        const iw = arr[0].length;
+        const nh = ih + 2 * pad;
+        const nw = iw + 2 * pad;
+        const padded = Array.from({length: nh}, () => Array(nw).fill(0));
+        for (let r = 0; r < nh; r++) {
+            for (let c = 0; c < nw; c++) {
+                const or = r - pad;
+                const oc = c - pad;
+                if (or < 0 || or >= ih || oc < 0 || oc >= iw) {
+                    if (type === 'zero') {
+                        padded[r][c] = 0;
+                    } else if (type === 'edge') {
+                        const rr = Math.min(Math.max(or, 0), ih - 1);
+                        const cc = Math.min(Math.max(oc, 0), iw - 1);
+                        padded[r][c] = arr[rr][cc];
+                    } else if (type === 'reflect') {
+                        let rr = or;
+                        if (rr < 0) rr = -rr - 1;
+                        if (rr >= ih) rr = 2 * ih - rr - 1;
+                        let cc = oc;
+                        if (cc < 0) cc = -cc - 1;
+                        if (cc >= iw) cc = 2 * iw - cc - 1;
+                        padded[r][c] = arr[rr][cc];
+                    }
+                } else {
+                    padded[r][c] = arr[or][oc];
+                }
+            }
+        }
+        return padded;
+    }
+
+    function conv2d(padded, kernel) {
+        const outH = Math.floor((padded.length - kernel.length) / strideVal) + 1;
+        const outW = Math.floor((padded[0].length - kernel[0].length) / strideVal) + 1;
+        if (outH <= 0 || outW <= 0) throw new Error('Kernel does not fit inside padded input with given stride.');
+        const out = Array.from({length: outH}, () => Array(outW).fill(0));
+        for (let i = 0; i < outH; i++) {
+            for (let j = 0; j < outW; j++) {
+                let sum = 0;
+                for (let ki = 0; ki < kernel.length; ki++) {
+                    for (let kj = 0; kj < kernel[0].length; kj++) {
+                        const r = i * strideVal + ki;
+                        const c = j * strideVal + kj;
+                        sum += padded[r][c] * kernel[ki][kj];
+                    }
+                }
+                out[i][j] = sum;
+            }
+        }
+        return out;
+    }
+    
+    function applyPooling(arr, size, type) {
+        const h = arr.length;
+        const w = arr[0].length;
+        const ph = Math.floor(h / size);
+        const pw = Math.floor(w / size);
+        const pooled = Array.from({length: ph}, () => Array(pw).fill(0));
+        for (let i = 0; i < ph; i++) {
+            for (let j = 0; j < pw; j++) {
+                let vals = [];
+                for (let di = 0; di < size; di++) {
+                    for (let dj = 0; dj < size; dj++) {
+                        vals.push(arr[i*size + di][j*size + dj]);
+                    }
+                }
+                if (type === 'max') {
+                    pooled[i][j] = Math.max(...vals);
+                } else {
+                    const sum = vals.reduce((a,b)=>a+b,0);
+                    pooled[i][j] = Math.round(sum / vals.length);
+                }
+            }
+        }
+        return pooled;
+    }
+
+    function buildGrid(arr, container, cellClass, mask) {
+        container.style.width = arr[0].length * CELL + 'px';
+        container.style.height = arr.length * CELL + 'px';
+        container.innerHTML = '';
+        container.style.display = 'grid';
+        container.style.gridTemplateColumns = `repeat(${arr[0].length}, ${CELL}px)`;
+        container.style.gridTemplateRows = `repeat(${arr.length}, ${CELL}px)`;
+        for (let r = 0; r < arr.length; r++) {
+            for (let c = 0; c < arr[0].length; c++) {
+                const div = document.createElement('div');
+                div.className = 'cell ' + cellClass;
+                if (mask && mask[r][c]) div.className += ' pad-cell';
+                div.id = `${container.id}-${r}-${c}`;
+                div.textContent = arr[r][c];
+                container.appendChild(div);
+            }
+        }
+    }
+
+    function startAnimation() {
+        const ih = parseInt(document.getElementById('input_h').value, 10);
+        const iw = parseInt(document.getElementById('input_w').value, 10);
+        const kh = parseInt(document.getElementById('kernel_h').value, 10);
+        const kw = parseInt(document.getElementById('kernel_w').value, 10);
+        strideVal = parseInt(document.getElementById('stride').value, 10);
+        padVal = parseInt(document.getElementById('padding').value, 10);
+        padType = document.getElementById('pad_type').value;
+        try {
+            if (ih <= 0 || iw <= 0 || kh <= 0 || kw <= 0 || strideVal <= 0 || padVal < 0) {
+                throw new Error('Sizes must be positive and padding >=0.');
+            }
+            const inp = Array.from({length: ih}, () => Array(iw).fill(0).map(randInt));
+            const ker = Array.from({length: kh}, () => Array(kw).fill(0).map(randInt));
+            paddedArr = applyPadding(inp, padVal, padType);
+            inputArr = paddedArr; // alias for display
+            kernelArr = ker;
+            outputArr = conv2d(paddedArr, ker);
+        } catch (e) {
+            alert(e.message);
+            return;
+        }
+        const ihp = paddedArr.length;
+        const iwp = paddedArr[0].length;
+        const outH = outputArr.length;
+        const outW = outputArr[0].length;
+        // compute pad mask
+        padMask = Array.from({length: ihp}, () => Array(iwp).fill(false));
+        if (padVal > 0) {
+            for (let r = 0; r < ihp; r++) {
+                for (let c = 0; c < iwp; c++) {
+                    if (r < padVal || r >= ihp - padVal || c < padVal || c >= iwp - padVal) {
+                        padMask[r][c] = true;
+                    }
+                }
+            }
+        }
+
+        const vis = document.getElementById('vis');
+        vis.innerHTML = '';
+        // create wrapper for grids so nav can sit below
+        const grids = document.createElement('div');
+        grids.id = 'grids';
+        vis.appendChild(grids);
+        // input grid container
+        const inContainer = document.createElement('div');
+        inContainer.id = 'input-grid';
+        inContainer.style.position = 'relative';
+        grids.appendChild(inContainer);
+        buildGrid(paddedArr, inContainer, 'input-cell', padMask);
+        // overlay element
+        const overlay = document.createElement('div');
+        overlay.id = 'kernel-overlay';
+        inContainer.appendChild(overlay);
+
+        // output grid
+        const outContainer = document.createElement('div');
+        outContainer.id = 'output-grid';
+        outContainer.style.marginLeft = '20px';
+        grids.appendChild(outContainer);
+        buildGrid(outputArr.map(r=>r.map(_=>'')), outContainer, 'output-cell');
+        // pooling setup
+        poolType = document.getElementById('pool_type').value;
+        poolSize = parseInt(document.getElementById('pool_size').value, 10);
+        const outH2 = outputArr.length;
+        const outW2 = outputArr[0].length;
+        poolH = Math.floor(outH2 / poolSize);
+        poolW = Math.floor(outW2 / poolSize);
+        filledOutputs = Array.from({length: outH2}, () => Array(outW2).fill(0));
+        poolArr = Array.from({length: poolH}, () => Array(poolW).fill(''));
+        if (poolSize > 0) {
+            const poolContainer = document.createElement('div');
+            poolContainer.id = 'pool-grid';
+            poolContainer.style.marginLeft = '20px';
+            grids.appendChild(poolContainer);
+            buildGrid(poolArr, poolContainer, 'pool-cell');
+        }
+
+        // navigation controls
+        const nav = document.createElement('div');
+        nav.className = 'nav-buttons';
+        const prevBtn = document.createElement('button'); prevBtn.textContent = 'Previous';
+        const nextBtn = document.createElement('button'); nextBtn.textContent = 'Next';
+        const randBtn = document.createElement('button'); randBtn.textContent = 'Randomize';
+        // apply classes for 3D look and sizing
+        prevBtn.className = 'btn3d big-btn prev-next';
+        nextBtn.className = 'btn3d big-btn prev-next';
+        randBtn.className = 'btn3d randomize';
+        prevBtn.onclick = prevPos;
+        nextBtn.onclick = nextPos;
+        randBtn.onclick = startAnimation;
+        // first row: previous and next
+        const row1 = document.createElement('div');
+        row1.appendChild(prevBtn);
+        row1.appendChild(nextBtn);
+        // second row: randomize
+        const row2 = document.createElement('div');
+        row2.style.marginTop = '10px';
+        row2.appendChild(randBtn);
+        nav.appendChild(row1);
+        nav.appendChild(row2);
+        vis.appendChild(nav);
+
+        // prepare position list
+        positions = [];
+        for (let i = 0; i < outH; i++) {
+            for (let j = 0; j < outW; j++) {
+                positions.push([i, j]);
+            }
+        }
+        posIndex = 0;
+        kpos = positions[0].slice();
+        prevOverlaps = [];
+        updateDisplay();
+    }
+
+    function prevPos() {
+        if (posIndex > 0) {
+            const [oldi, oldj] = positions[posIndex];
+            // clear output cell
+            const oc = document.getElementById(`output-grid-${oldi}-${oldj}`);
+            oc.textContent = '';
+            oc.className = 'cell output-cell';
+            // update filledOutputs and potentially clear pool
+            filledOutputs[oldi][oldj] = 0;
+            if (poolSize > 0) {
+                const pi = Math.floor(oldi / poolSize);
+                const pj = Math.floor(oldj / poolSize);
+                if (pi < poolH && pj < poolW) {
+                    // if any cell in block unfilled, clear pool cell
+                    let complete = true;
+                    for (let di = 0; di < poolSize && complete; di++) {
+                        for (let dj = 0; dj < poolSize; dj++) {
+                            const rr = pi * poolSize + di;
+                            const cc = pj * poolSize + dj;
+                            if (filledOutputs[rr][cc] === 0) {
+                                complete = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (!complete) {
+                        poolArr[pi][pj] = '';
+                        const pc = document.getElementById(`pool-grid-${pi}-${pj}`);
+                        if (pc) {
+                            pc.textContent = '';
+                            pc.className = 'cell pool-cell';
+                        }
+                    }
+                }
+            }
+            posIndex--;
+            kpos = positions[posIndex].slice();
+            updateDisplay();
+        }
+    }
+
+    function nextPos() {
+        if (posIndex < positions.length - 1) {
+            posIndex++;
+            kpos = positions[posIndex].slice();
+            updateDisplay();
+        }
+    }
+
+    function updateDisplay() {
+        // restore previous overlaps
+        for (const item of prevOverlaps) {
+            const cell = document.getElementById(`input-grid-${item.r}-${item.c}`);
+            cell.innerHTML = item.origText;
+            cell.className = item.origClass;
+        }
+        prevOverlaps = [];
+        const [i_pos, j_pos] = kpos;
+        const base_r = i_pos * strideVal;
+        const base_c = j_pos * strideVal;
+        // highlight overlapping cells
+        for (let kr = 0; kr < kernelArr.length; kr++) {
+            for (let kc = 0; kc < kernelArr[0].length; kc++) {
+                const r = base_r + kr;
+                const c = base_c + kc;
+                if (r >= 0 && r < inputArr.length && c >= 0 && c < inputArr[0].length) {
+                    const cell = document.getElementById(`input-grid-${r}-${c}`);
+                    prevOverlaps.push({ r, c, origText: cell.innerHTML, origClass: cell.className });
+                    cell.className = 'cell overlap-cell';
+                    const inp = inputArr[r][c];
+                    const ker = kernelArr[kr][kc];
+                    cell.innerHTML = `<span class="inp">${inp}</span><span>×</span><span class="ker">${ker}</span>`;
+                }
+            }
+        }
+        // move overlay
+        const overlay = document.getElementById('kernel-overlay');
+        overlay.style.left = base_c * CELL + 'px';
+        overlay.style.top = base_r * CELL + 'px';
+        overlay.style.width = kernelArr[0].length * CELL + 'px';
+        overlay.style.height = kernelArr.length * CELL + 'px';
+        
+        // update output cell
+        const [oi, oj] = [i_pos, j_pos];
+        const oc = document.getElementById(`output-grid-${oi}-${oj}`);
+        oc.textContent = outputArr[oi][oj];
+        oc.className = 'cell output-cell';
+        // mark filled and possibly update pooling
+        filledOutputs[oi][oj] = 1;
+        if (poolSize > 0) {
+            const pi = Math.floor(oi / poolSize);
+            const pj = Math.floor(oj / poolSize);
+            if (pi < poolH && pj < poolW) {
+                let complete = true;
+                for (let di = 0; di < poolSize && complete; di++) {
+                    for (let dj = 0; dj < poolSize; dj++) {
+                        const rr = pi * poolSize + di;
+                        const cc = pj * poolSize + dj;
+                        if (filledOutputs[rr][cc] === 0) {
+                            complete = false;
+                            break;
+                        }
+                    }
+                }
+                if (complete) {
+                    // compute pool value
+                    let vals = [];
+                    for (let di = 0; di < poolSize; di++) {
+                        for (let dj = 0; dj < poolSize; dj++) {
+                            vals.push(outputArr[pi*poolSize + di][pj*poolSize + dj]);
+                        }
+                    }
+                    let pv;
+                    if (poolType === 'max') {
+                        pv = Math.max(...vals);
+                    } else {
+                        const sum = vals.reduce((a,b)=>a+b,0);
+                        pv = Math.round(sum / vals.length);
+                    }
+                    poolArr[pi][pj] = pv;
+                    const pc = document.getElementById(`pool-grid-${pi}-${pj}`);
+                    if (pc) {
+                        pc.textContent = pv;
+                        pc.className = 'cell pool-cell';
+                    }
+                }
+            }
+        }
+    }
+
+    document.getElementById('play').onclick = startAnimation;
+})();
+</script>
+</body>
+</html>
