@@ -916,7 +916,7 @@
           sum + Number(target ?? 0) * Math.log(Math.max(probabilities[index] ?? 0, epsilon))
         ), 0);
         return {
-          label: "Loss CE",
+          label: "Entropía cruzada",
           value: loss
         };
       }
@@ -928,7 +928,7 @@
       }, 0) / length;
 
       return {
-        label: "Loss MSE",
+        label: "MSE",
         value: mse
       };
     }
