@@ -1,0 +1,1680 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visualizador de Red Neuronal</title>
+  <style>
+    :root {
+      --bg: #f4efe5;
+      --panel: #fffaf2;
+      --panel-border: #d2c3a8;
+      --ink: #2d2418;
+      --muted: #746551;
+      --accent: #b85c38;
+      --accent-soft: #f0c7a9;
+      --grid: rgba(88, 67, 45, 0.08);
+      --good: #1d8f52;
+      --bad: #b03b31;
+      --node-fill: #fffefa;
+      --node-stroke: #70583e;
+      --shadow: 0 16px 40px rgba(72, 52, 31, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #fff8e8 0%, transparent 28%),
+        radial-gradient(circle at bottom right, #ecd8bf 0%, transparent 32%),
+        linear-gradient(135deg, #efe4d2, var(--bg));
+      min-height: 100vh;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      padding: 24px;
+      background: linear-gradient(180deg, rgba(255, 250, 242, 0.96), rgba(244, 235, 218, 0.96));
+      border-right: 1px solid var(--panel-border);
+      box-shadow: var(--shadow);
+      position: relative;
+      z-index: 2;
+    }
+
+    .sidebar h1 {
+      margin: 0 0 8px;
+      font-size: 1.7rem;
+      letter-spacing: 0.02em;
+    }
+
+    .sidebar p {
+      margin: 0 0 20px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(126, 101, 71, 0.2);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(111, 84, 52, 0.08);
+    }
+
+    .card h2 {
+      margin: 0 0 14px;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .field:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+    }
+
+    input[type="number"],
+    input[type="text"],
+    select {
+      width: 100%;
+      border: 1px solid #cbb89a;
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fffdf8;
+      color: var(--ink);
+    }
+
+    input[type="file"] {
+      width: 100%;
+      font-size: 0.95rem;
+    }
+
+    .hidden-layer-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, #b85c38, #cf7a48);
+      color: #fff;
+      box-shadow: 0 10px 18px rgba(184, 92, 56, 0.25);
+    }
+
+    button.secondary {
+      background: linear-gradient(135deg, #6d8b74, #4d6a56);
+      color: #fff;
+      box-shadow: 0 10px 18px rgba(77, 106, 86, 0.22);
+    }
+
+    button.ghost {
+      background: #efe4d5;
+      color: #4d3b28;
+      box-shadow: 0 10px 18px rgba(110, 87, 59, 0.12);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .dataset-summary,
+    .status {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .status strong {
+      color: var(--ink);
+    }
+
+    .main {
+      position: relative;
+      padding: 20px;
+      overflow: hidden;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    .main-stack {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 16px;
+      height: calc(100vh - 40px);
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+      padding: 16px 18px;
+    }
+
+    .toolbar-group {
+      display: grid;
+      gap: 10px;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .toolbar-export {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .toolbar-export select {
+      min-width: 130px;
+    }
+
+    .toolbar-status {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .canvas-shell {
+      width: 100%;
+      height: 100%;
+      border-radius: 24px;
+      overflow: hidden;
+      background: rgba(255, 252, 245, 0.75);
+      border: 1px solid rgba(112, 88, 62, 0.18);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), var(--shadow);
+      position: relative;
+    }
+
+    #networkSvg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 24px;
+      color: #7b674f;
+      pointer-events: none;
+    }
+
+    .placeholder strong {
+      display: block;
+      font-size: 1.25rem;
+      margin-bottom: 8px;
+      color: #503c29;
+    }
+
+    .formula-popup {
+      position: absolute;
+      z-index: 5;
+      min-width: 280px;
+      max-width: 360px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255, 250, 242, 0.98);
+      border: 1px solid rgba(112, 88, 62, 0.24);
+      box-shadow: 0 22px 44px rgba(72, 52, 31, 0.22);
+      color: var(--ink);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.14s ease, transform 0.14s ease;
+    }
+
+    .formula-popup.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .formula-popup h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      color: var(--accent);
+    }
+
+    .formula-popup p {
+      margin: 0 0 8px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.92rem;
+    }
+
+    .formula-popup p:last-child {
+      margin-bottom: 0;
+    }
+
+    .formula-popup code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.84rem;
+      color: #3f2d1d;
+      white-space: normal;
+    }
+
+    .footer-note {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+
+    .inline-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    .inline-check input {
+      width: auto;
+      margin: 0;
+    }
+
+    dialog {
+      border: 1px solid rgba(112, 88, 62, 0.2);
+      border-radius: 22px;
+      padding: 0;
+      box-shadow: 0 22px 60px rgba(72, 52, 31, 0.24);
+      background: #fffaf2;
+      color: var(--ink);
+      width: min(540px, calc(100vw - 32px));
+    }
+
+    dialog::backdrop {
+      background: rgba(46, 35, 23, 0.38);
+      backdrop-filter: blur(4px);
+    }
+
+    .dialog-body {
+      padding: 22px;
+    }
+
+    .dialog-body h3 {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 1.15rem;
+    }
+
+    .dialog-body p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    @media (max-width: 1000px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .main-stack {
+        height: auto;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar-export {
+        justify-content: stretch;
+      }
+
+      .toolbar-export select,
+      .toolbar-export button {
+        flex: 1;
+      }
+
+      .canvas-shell {
+        height: 72vh;
+      }
+
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>Red neuronal interactiva</h1>
+      <p>Configura la arquitectura, carga un CSV y visualiza pesos, conexiones y deltas sobre la red.</p>
+
+      <section class="card">
+        <h2>Arquitectura</h2>
+        <div class="field">
+          <label for="inputSize">Tamaño de entrada</label>
+          <input id="inputSize" type="number" min="1" value="4">
+        </div>
+        <div class="field">
+          <label for="hiddenLayerCount">Número de capas ocultas</label>
+          <input id="hiddenLayerCount" type="number" min="0" max="8" value="2">
+        </div>
+        <div class="field">
+          <label>Tamaño de cada capa oculta</label>
+          <div id="hiddenLayerSizes" class="hidden-layer-grid"></div>
+        </div>
+        <div class="field">
+          <label for="outputSize">Tamaño de salida</label>
+          <input id="outputSize" type="number" min="1" value="3">
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Aprendizaje</h2>
+        <div class="field">
+          <label for="activation">Función de activación</label>
+          <select id="activation">
+            <option value="Sigmoide">Sigmoide</option>
+            <option value="Tangente hiperbólica">Tangente hiperbólica</option>
+            <option value="ReLU">ReLu</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="problemType">Tipo de problema</label>
+          <select id="problemType">
+            <option value="classification">Clasificación</option>
+            <option value="regression">Regresión</option>
+          </select>
+        </div>
+        <div class="field" id="classCountField">
+          <label for="classCount">Número de clases</label>
+          <input id="classCount" type="number" min="2" value="3">
+        </div>
+        <label class="inline-check" for="showDeltaBubbles">
+          <input id="showDeltaBubbles" type="checkbox" checked>
+          Mostrar bocadillos de delta
+        </label>
+        <label class="inline-check" for="showWeightLabels">
+          <input id="showWeightLabels" type="checkbox" checked>
+          Mostrar pesos de las conexiones
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Data-set</h2>
+        <div class="field">
+          <label>Selección de fichero</label>
+          <button id="openDatasetDialogBtn" type="button" class="secondary">Elegir CSV</button>
+        </div>
+        <div id="datasetSummary" class="dataset-summary">No hay fichero cargado.</div>
+      </section>
+
+      <div class="footer-note">En clasificación, la salida se ajusta automáticamente al número de clases.</div>
+    </aside>
+
+    <main class="main">
+      <div class="main-stack">
+        <section class="card toolbar">
+          <div class="toolbar-group">
+            <div class="toolbar-actions">
+              <button id="createBtn" class="primary">Crear red</button>
+              <button id="randomizeBtn" class="secondary" disabled>Aleatorizar pesos</button>
+              <button id="forwardBtn" class="primary" disabled>Forward pass</button>
+              <button id="backwardBtn" class="ghost" disabled>Backward pass</button>
+            </div>
+            <div id="status" class="toolbar-status">Pendiente de crear la red.</div>
+          </div>
+          <div class="toolbar-export">
+            <select id="exportFormat" aria-label="Formato de exportación">
+              <option value="svg">Exportar SVG</option>
+              <option value="png">Exportar PNG</option>
+              <option value="pdf">Exportar PDF</option>
+            </select>
+            <button id="exportBtn" class="ghost" type="button">Exportar</button>
+          </div>
+        </section>
+
+        <div class="canvas-shell">
+          <svg id="networkSvg" xmlns="http://www.w3.org/2000/svg" aria-label="Visualización de la red neuronal"></svg>
+          <div id="formulaPopup" class="formula-popup" aria-hidden="true"></div>
+          <div id="placeholder" class="placeholder">
+            <div>
+              <strong>La red aparecerá aquí</strong>
+              Pulsa <em>Crear red</em> para generar la arquitectura, <em>Aleatorizar pesos</em> para colorear las conexiones y usa <em>Exportar</em> cuando quieras guardar la vista.
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="datasetDialog">
+    <div class="dialog-body">
+      <h3>Seleccionar data-set CSV</h3>
+      <p>Elige el fichero que quieres asociar a la red. Se mostrará un resumen básico del contenido detectado.</p>
+      <div class="field">
+        <label for="datasetFile">Fichero CSV</label>
+        <input id="datasetFile" type="file" accept=".csv,text/csv">
+      </div>
+      <div class="button-row">
+        <button id="confirmDatasetBtn" type="button" class="primary">Cerrar</button>
+        <button id="cancelDatasetBtn" type="button" class="ghost">Cancelar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const LEARNING_RATE = 0.15;
+    const SVG_COLORS = {
+      positive: "#1d8f52",
+      negative: "#b03b31",
+      accent: "#b85c38",
+      lossBg: "#7b61a8",
+      lossText: "#fff8ff",
+      nodeFill: "#fffefa",
+      nodeStroke: "#70583e",
+      ink: "#4b3826",
+      softInk: "#5b452f",
+      meta: "#5c4b39",
+      bubbleStroke: "#6f563d",
+      bubbleFill: "#fffdf8",
+      bubbleText: "#3f2d1d",
+      background: "#fffaf2"
+    };
+
+    const state = {
+      dataset: null,
+      network: null
+    };
+
+    const hiddenLayerCountInput = document.getElementById("hiddenLayerCount");
+    const hiddenLayerSizesContainer = document.getElementById("hiddenLayerSizes");
+    const problemTypeInput = document.getElementById("problemType");
+    const classCountField = document.getElementById("classCountField");
+    const classCountInput = document.getElementById("classCount");
+    const outputSizeInput = document.getElementById("outputSize");
+    const showDeltaBubblesInput = document.getElementById("showDeltaBubbles");
+    const showWeightLabelsInput = document.getElementById("showWeightLabels");
+    const datasetDialog = document.getElementById("datasetDialog");
+    const openDatasetDialogBtn = document.getElementById("openDatasetDialogBtn");
+    const confirmDatasetBtn = document.getElementById("confirmDatasetBtn");
+    const cancelDatasetBtn = document.getElementById("cancelDatasetBtn");
+    const datasetInput = document.getElementById("datasetFile");
+    const datasetSummary = document.getElementById("datasetSummary");
+    const createBtn = document.getElementById("createBtn");
+    const randomizeBtn = document.getElementById("randomizeBtn");
+    const forwardBtn = document.getElementById("forwardBtn");
+    const backwardBtn = document.getElementById("backwardBtn");
+    const exportFormatInput = document.getElementById("exportFormat");
+    const exportBtn = document.getElementById("exportBtn");
+    const statusLabel = document.getElementById("status");
+    const placeholder = document.getElementById("placeholder");
+    const networkSvg = document.getElementById("networkSvg");
+    const formulaPopup = document.getElementById("formulaPopup");
+
+    function createSvgNode(tag, attributes = {}) {
+      const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+      return node;
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function setStatus(message) {
+      statusLabel.innerHTML = message;
+    }
+
+    function updateTrainingButtons() {
+      if (!state.network) {
+        randomizeBtn.disabled = true;
+        forwardBtn.disabled = true;
+        backwardBtn.disabled = true;
+        return;
+      }
+
+      randomizeBtn.disabled = false;
+      forwardBtn.disabled = state.network.training.phase !== "ready";
+      backwardBtn.disabled = !["delta", "update"].includes(state.network.training.phase);
+    }
+
+    function refreshHiddenLayerInputs() {
+      const layerCount = clamp(Number(hiddenLayerCountInput.value) || 0, 0, 8);
+      hiddenLayerCountInput.value = layerCount;
+      const existingValues = Array.from(hiddenLayerSizesContainer.querySelectorAll("input")).map((input) => input.value);
+      hiddenLayerSizesContainer.innerHTML = "";
+
+      for (let index = 0; index < layerCount; index += 1) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "field";
+
+        const label = document.createElement("label");
+        label.setAttribute("for", `hiddenSize_${index}`);
+        label.textContent = `Capa oculta ${index + 1}`;
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.id = `hiddenSize_${index}`;
+        input.min = "1";
+        input.value = existingValues[index] || "5";
+
+        wrapper.append(label, input);
+        hiddenLayerSizesContainer.appendChild(wrapper);
+      }
+    }
+
+    function syncProblemTypeUI() {
+      const classification = problemTypeInput.value === "classification";
+      classCountField.style.display = classification ? "grid" : "none";
+      outputSizeInput.disabled = classification;
+      if (classification) {
+        outputSizeInput.value = classCountInput.value;
+      }
+    }
+
+    function parseCsv(text) {
+      const rows = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.split(",").map((value) => value.trim()));
+
+      if (!rows.length) {
+        return null;
+      }
+
+      const columnCount = rows[0].length;
+      const hasHeader = rows[0].some((value) => Number.isNaN(Number(value)));
+      return {
+        rows,
+        rowCount: rows.length,
+        columnCount,
+        hasHeader,
+        fileName: datasetInput.files[0]?.name || "dataset.csv"
+      };
+    }
+
+    function updateDatasetSummary() {
+      if (!state.dataset) {
+        datasetSummary.textContent = "No hay fichero cargado.";
+        return;
+      }
+
+      const { fileName, rowCount, columnCount, hasHeader } = state.dataset;
+      datasetSummary.innerHTML = `
+        <strong>${fileName}</strong><br>
+        Filas detectadas: ${rowCount}<br>
+        Columnas detectadas: ${columnCount}<br>
+        Cabecera probable: ${hasHeader ? "sí" : "no"}
+      `;
+    }
+
+    function activationFunction(name, value) {
+      if (name === "Sigmoide") {
+        return 1 / (1 + Math.exp(-value));
+      }
+      if (name === "Tangente hiperbólica") {
+        return Math.tanh(value);
+      }
+      return Math.max(0, value);
+    }
+
+    function activationDerivative(name, activatedValue, netValue) {
+      if (name === "Sigmoide") {
+        return activatedValue * (1 - activatedValue);
+      }
+      if (name === "Tangente hiperbólica") {
+        return 1 - activatedValue * activatedValue;
+      }
+      return netValue > 0 ? 1 : 0;
+    }
+
+    function softmax(values) {
+      const maxValue = Math.max(...values);
+      const exponentials = values.map((value) => Math.exp(value - maxValue));
+      const total = exponentials.reduce((sum, value) => sum + value, 0) || 1;
+      return exponentials.map((value) => value / total);
+    }
+
+    function normalizeRowValues(values) {
+      return values.map((value) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : 0;
+      });
+    }
+
+    function getDatasetRows() {
+      if (!state.dataset?.rows?.length) {
+        return [];
+      }
+      const dataRows = state.dataset.hasHeader ? state.dataset.rows.slice(1) : state.dataset.rows.slice();
+      return dataRows.filter((row) => row.length > 0);
+    }
+
+    function buildSyntheticSample(architecture, sampleIndex = 0) {
+      const syntheticInput = Array.from({ length: architecture.inputSize }, () =>
+        Number(((Math.random() * 1.6) - 0.8).toFixed(3))
+      );
+
+      if (architecture.problemType === "classification") {
+        const classIndex = sampleIndex % architecture.outputSize;
+        const target = Array.from({ length: architecture.outputSize }, (_, index) => (index === classIndex ? 1 : 0));
+        return {
+          input: syntheticInput,
+          target,
+          origin: "Muestra aleatoria",
+          sampleIndex
+        };
+      }
+
+      const target = Array.from({ length: architecture.outputSize }, () =>
+        Number(((Math.random() * 1.6) - 0.8).toFixed(3))
+      );
+      return {
+        input: syntheticInput,
+        target,
+        origin: "Muestra aleatoria",
+        sampleIndex
+      };
+    }
+
+    function buildSampleFromDataset(architecture, sampleIndex = 0) {
+      const dataRows = getDatasetRows();
+      if (!dataRows.length) {
+        return buildSyntheticSample(architecture, sampleIndex);
+      }
+
+      const normalizedIndex = sampleIndex % dataRows.length;
+      const selectedRow = dataRows[normalizedIndex];
+      const numericRow = normalizeRowValues(selectedRow);
+      const input = Array.from({ length: architecture.inputSize }, (_, index) => numericRow[index] ?? 0);
+
+      if (architecture.problemType === "classification") {
+        const labelIndex = numericRow[architecture.inputSize] ?? 0;
+        const classIndex = clamp(Math.round(labelIndex), 0, architecture.outputSize - 1);
+        const target = Array.from({ length: architecture.outputSize }, (_, index) => (index === classIndex ? 1 : 0));
+        return {
+          input,
+          target,
+          origin: `${state.dataset.fileName} | fila ${normalizedIndex + 1}`,
+          sampleIndex: normalizedIndex
+        };
+      }
+
+      const target = Array.from({ length: architecture.outputSize }, (_, index) =>
+        numericRow[architecture.inputSize + index] ?? 0
+      );
+      return {
+        input,
+        target,
+        origin: `${state.dataset.fileName} | fila ${normalizedIndex + 1}`,
+        sampleIndex: normalizedIndex
+      };
+    }
+
+    function loadSampleForCurrentNetwork(sampleIndex = 0) {
+      if (!state.network) {
+        return;
+      }
+      state.network.sampleIndex = sampleIndex;
+      state.network.sample = buildSampleFromDataset(state.network, sampleIndex);
+    }
+
+    function formatNumber(value, digits = 3) {
+      return Number(value ?? 0).toFixed(digits);
+    }
+
+    function formatSigned(value, digits = 3) {
+      const numeric = Number(value ?? 0);
+      return `${numeric >= 0 ? "+" : ""}${numeric.toFixed(digits)}`;
+    }
+
+    function getActivationExpression(name, net, output) {
+      if (name === "Sigmoide") {
+        return `a = 1 / (1 + e^(-${formatNumber(net, 4)})) = ${formatNumber(output, 4)}`;
+      }
+      if (name === "Tangente hiperbólica") {
+        return `a = tanh(${formatNumber(net, 4)}) = ${formatNumber(output, 4)}`;
+      }
+      return `a = max(0, ${formatNumber(net, 4)}) = ${formatNumber(output, 4)}`;
+    }
+
+    function getNeuronFormulaHtml(layerIndex, neuronIndex) {
+      const neuron = state.network.layers[layerIndex]?.[neuronIndex];
+      if (!neuron || layerIndex === 0) {
+        return "";
+      }
+
+      const previousLayer = state.network.layers[layerIndex - 1];
+      const weightMatrix = state.network.weights[layerIndex - 1];
+      const terms = previousLayer.map((previousNeuron, previousIndex) => (
+        `${formatNumber(previousNeuron.output, 4)} × ${formatSigned(weightMatrix[previousIndex][neuronIndex], 4)}`
+      ));
+      const layerLabel = layerIndex === state.network.layers.length - 1 ? "Salida" : `Oculta ${layerIndex}`;
+
+      return `
+        <h3>${layerLabel} · Neurona ${neuronIndex + 1}</h3>
+        <p><strong>Suma ponderada</strong><br><code>net = ${terms.join(" + ")} = ${formatNumber(neuron.net, 4)}</code></p>
+        <p><strong>Activación ${state.network.activation}</strong><br><code>${getActivationExpression(state.network.activation, neuron.net, neuron.output)}</code></p>
+      `;
+    }
+
+    function getDeltaFormulaHtml(layerIndex, neuronIndex) {
+      const neuron = state.network.layers[layerIndex]?.[neuronIndex];
+      if (!neuron || layerIndex === 0) {
+        return "";
+      }
+
+      const derivative = activationDerivative(state.network.activation, neuron.output, neuron.net);
+      const layerIsOutput = layerIndex === state.network.layers.length - 1;
+
+      if (layerIsOutput) {
+        const target = Number(neuron.target ?? 0);
+        const error = target - neuron.output;
+        return `
+          <h3>Delta salida · Neurona ${neuronIndex + 1}</h3>
+          <p><strong>Error</strong><br><code>${formatNumber(target, 4)} - ${formatNumber(neuron.output, 4)} = ${formatNumber(error, 4)}</code></p>
+          <p><strong>Derivada</strong><br><code>${formatNumber(derivative, 4)}</code></p>
+          <p><strong>Delta</strong><br><code>δ = ${formatNumber(error, 4)} × ${formatNumber(derivative, 4)} = ${formatNumber(neuron.delta, 4)}</code></p>
+        `;
+      }
+
+      const nextLayer = state.network.layers[layerIndex + 1];
+      const outgoingWeights = state.network.weights[layerIndex];
+      const propagatedTerms = nextLayer.map((nextNeuron, nextIndex) => (
+        `${formatSigned(outgoingWeights[neuronIndex][nextIndex], 4)} × ${formatSigned(nextNeuron.delta, 4)}`
+      ));
+      const propagatedError = nextLayer.reduce((sum, nextNeuron, nextIndex) => (
+        sum + outgoingWeights[neuronIndex][nextIndex] * nextNeuron.delta
+      ), 0);
+
+      return `
+        <h3>Delta oculta · Neurona ${neuronIndex + 1}</h3>
+        <p><strong>Error propagado</strong><br><code>${propagatedTerms.join(" + ")} = ${formatNumber(propagatedError, 4)}</code></p>
+        <p><strong>Derivada</strong><br><code>${formatNumber(derivative, 4)}</code></p>
+        <p><strong>Delta</strong><br><code>δ = ${formatNumber(propagatedError, 4)} × ${formatNumber(derivative, 4)} = ${formatNumber(neuron.delta, 4)}</code></p>
+      `;
+    }
+
+    function hideFormulaPopup() {
+      formulaPopup.classList.remove("visible");
+      formulaPopup.setAttribute("aria-hidden", "true");
+    }
+
+    function showFormulaPopup(event, html) {
+      if (!html) {
+        hideFormulaPopup();
+        return;
+      }
+
+      formulaPopup.innerHTML = html;
+      formulaPopup.classList.add("visible");
+      formulaPopup.setAttribute("aria-hidden", "false");
+
+      const shellRect = networkSvg.parentElement.getBoundingClientRect();
+      const popupRect = formulaPopup.getBoundingClientRect();
+      let left = event.clientX - shellRect.left + 18;
+      let top = event.clientY - shellRect.top - (popupRect.height / 2);
+
+      if (left + popupRect.width > shellRect.width - 12) {
+        left = event.clientX - shellRect.left - popupRect.width - 18;
+      }
+      if (left < 12) {
+        left = 12;
+      }
+      if (top < 12) {
+        top = 12;
+      }
+      if (top + popupRect.height > shellRect.height - 12) {
+        top = shellRect.height - popupRect.height - 12;
+      }
+
+      formulaPopup.style.left = `${left}px`;
+      formulaPopup.style.top = `${top}px`;
+    }
+
+    function bindFormulaHover(node, htmlBuilder) {
+      node.style.cursor = "pointer";
+      node.addEventListener("mouseenter", (event) => {
+        event.stopPropagation();
+        showFormulaPopup(event, htmlBuilder());
+      });
+      node.addEventListener("mousemove", (event) => {
+        event.stopPropagation();
+        showFormulaPopup(event, htmlBuilder());
+      });
+      node.addEventListener("mouseleave", hideFormulaPopup);
+    }
+
+    function computeLoss() {
+      if (!state.network?.training?.forwardDone) {
+        return null;
+      }
+
+      const outputLayer = state.network.layers[state.network.layers.length - 1];
+      const predictions = outputLayer.map((neuron) => neuron.output ?? 0);
+      const targets = state.network.sample.target ?? [];
+
+      if (state.network.problemType === "classification") {
+        const probabilities = softmax(predictions);
+        const epsilon = 1e-9;
+        const loss = -targets.reduce((sum, target, index) => (
+          sum + Number(target ?? 0) * Math.log(Math.max(probabilities[index] ?? 0, epsilon))
+        ), 0);
+        return {
+          label: "Loss CE",
+          value: loss
+        };
+      }
+
+      const length = Math.max(predictions.length, 1);
+      const mse = predictions.reduce((sum, prediction, index) => {
+        const error = prediction - Number(targets[index] ?? 0);
+        return sum + error * error;
+      }, 0) / length;
+
+      return {
+        label: "Loss MSE",
+        value: mse
+      };
+    }
+
+    function getArchitecture() {
+      const inputSize = clamp(Number(document.getElementById("inputSize").value) || 1, 1, 64);
+      const hiddenSizes = Array.from(hiddenLayerSizesContainer.querySelectorAll("input"))
+        .map((input) => clamp(Number(input.value) || 1, 1, 64));
+      const classification = problemTypeInput.value === "classification";
+      const outputSize = classification
+        ? clamp(Number(classCountInput.value) || 2, 2, 32)
+        : clamp(Number(outputSizeInput.value) || 1, 1, 32);
+
+      if (classification) {
+        outputSizeInput.value = outputSize;
+      }
+
+      const layerSizes = [inputSize, ...hiddenSizes, outputSize];
+      return {
+        inputSize,
+        hiddenSizes,
+        outputSize,
+        layerSizes,
+        activation: document.getElementById("activation").value,
+        problemType: problemTypeInput.value,
+        classCount: classification ? outputSize : null
+      };
+    }
+
+    function buildNetwork() {
+      const architecture = getArchitecture();
+      const layers = architecture.layerSizes.map((size, layerIndex) => (
+        Array.from({ length: size }, (_, neuronIndex) => ({
+          id: `L${layerIndex}N${neuronIndex}`,
+          layerIndex,
+          neuronIndex,
+          delta: 0
+        }))
+      ));
+
+      const weights = [];
+      for (let layerIndex = 0; layerIndex < architecture.layerSizes.length - 1; layerIndex += 1) {
+        const sourceSize = architecture.layerSizes[layerIndex];
+        const targetSize = architecture.layerSizes[layerIndex + 1];
+        const matrix = Array.from({ length: sourceSize }, () => Array.from({ length: targetSize }, () => 0));
+        weights.push(matrix);
+      }
+
+      state.network = {
+        ...architecture,
+        layers,
+        weights,
+        sampleIndex: 0,
+        sample: buildSampleFromDataset(architecture, 0),
+        training: {
+          phase: "ready",
+          deltaLayerIndex: architecture.layerSizes.length - 1,
+          updateLayerIndex: 0,
+          forwardDone: false
+        }
+      };
+      setStatus(`Red creada: <strong>${architecture.layerSizes.join(" -> ")}</strong> | Activación: ${architecture.activation}`);
+      updateTrainingButtons();
+      drawNetwork();
+    }
+
+    function randomizeWeights() {
+      if (!state.network) {
+        return;
+      }
+
+      state.network.weights = state.network.weights.map((matrix) =>
+        matrix.map((row) =>
+          row.map(() => Number((Math.random() * 2 - 1).toFixed(3)))
+        )
+      );
+
+      state.network.layers = state.network.layers.map((layer, layerIndex) =>
+        layer.map((neuron) => ({
+          ...neuron,
+          delta: 0,
+          output: layerIndex === 0 ? 0 : 0,
+          net: 0,
+          target: null
+        }))
+      );
+
+      state.network.sampleIndex = 0;
+      state.network.sample = buildSampleFromDataset(state.network, 0);
+      state.network.training = {
+        phase: "ready",
+        deltaLayerIndex: state.network.layerSizes.length - 1,
+        updateLayerIndex: 0,
+        forwardDone: false
+      };
+
+      setStatus(`Pesos aleatorizados en el rango [-1, 1]. Entrada de referencia: [${state.network.sample.input.join(", ")}]`);
+      updateTrainingButtons();
+      drawNetwork();
+    }
+
+    function runForwardPass() {
+      if (!state.network || state.network.training.phase !== "ready") {
+        return;
+      }
+
+      const { layers, weights, activation, sample } = state.network;
+      layers[0] = layers[0].map((neuron, index) => ({
+        ...neuron,
+        net: sample.input[index] ?? 0,
+        output: sample.input[index] ?? 0,
+        delta: 0,
+        target: null
+      }));
+
+      for (let layerIndex = 1; layerIndex < layers.length; layerIndex += 1) {
+        const previousLayer = layers[layerIndex - 1];
+        const weightMatrix = weights[layerIndex - 1];
+
+        layers[layerIndex] = layers[layerIndex].map((neuron, neuronIndex) => {
+          const net = previousLayer.reduce((sum, previousNeuron, previousIndex) => (
+            sum + previousNeuron.output * weightMatrix[previousIndex][neuronIndex]
+          ), 0);
+          const output = activationFunction(activation, net);
+          const isOutputLayer = layerIndex === layers.length - 1;
+          return {
+            ...neuron,
+            net: Number(net.toFixed(6)),
+            output: Number(output.toFixed(6)),
+            delta: 0,
+            target: isOutputLayer ? sample.target[neuronIndex] ?? 0 : null
+          };
+        });
+      }
+
+      state.network.training = {
+        phase: "delta",
+        deltaLayerIndex: layers.length - 1,
+        updateLayerIndex: 0,
+        forwardDone: true
+      };
+
+      setStatus(`Forward pass completado con la muestra de <strong>${sample.origin}</strong>. El backward pass calculará ahora los deltas capa a capa.`);
+      updateTrainingButtons();
+      drawNetwork();
+    }
+
+    function computeOutputLayerDeltas(layerIndex) {
+      const outputLayer = state.network.layers[layerIndex];
+      state.network.layers[layerIndex] = outputLayer.map((neuron) => {
+        const target = neuron.target ?? 0;
+        const error = target - neuron.output;
+        const derivative = activationDerivative(state.network.activation, neuron.output, neuron.net);
+        const delta = error * derivative;
+        return {
+          ...neuron,
+          delta: Number(delta.toFixed(6))
+        };
+      });
+    }
+
+    function computeHiddenLayerDeltas(layerIndex) {
+      const currentLayer = state.network.layers[layerIndex];
+      const nextLayer = state.network.layers[layerIndex + 1];
+      const outgoingWeights = state.network.weights[layerIndex];
+
+      state.network.layers[layerIndex] = currentLayer.map((neuron, neuronIndex) => {
+        const propagatedError = nextLayer.reduce((sum, nextNeuron, nextIndex) => (
+          sum + outgoingWeights[neuronIndex][nextIndex] * nextNeuron.delta
+        ), 0);
+        const derivative = activationDerivative(state.network.activation, neuron.output, neuron.net);
+        const delta = propagatedError * derivative;
+        return {
+          ...neuron,
+          delta: Number(delta.toFixed(6))
+        };
+      });
+    }
+
+    function applyWeightUpdate(layerIndex) {
+      const sourceLayer = state.network.layers[layerIndex];
+      const targetLayer = state.network.layers[layerIndex + 1];
+      state.network.weights[layerIndex] = state.network.weights[layerIndex].map((row, sourceIndex) =>
+        row.map((weight, targetIndex) => {
+          const adjustment = LEARNING_RATE * sourceLayer[sourceIndex].output * targetLayer[targetIndex].delta;
+          return Number((weight + adjustment).toFixed(6));
+        })
+      );
+    }
+
+    function runBackwardStep() {
+      if (!state.network) {
+        return;
+      }
+
+      const training = state.network.training;
+      if (training.phase === "delta") {
+        const layerIndex = training.deltaLayerIndex;
+        if (layerIndex === state.network.layers.length - 1) {
+          computeOutputLayerDeltas(layerIndex);
+        } else {
+          computeHiddenLayerDeltas(layerIndex);
+        }
+
+        if (layerIndex > 1) {
+          state.network.training.deltaLayerIndex -= 1;
+          setStatus(`Backward pass: deltas calculados para la capa ${layerIndex === state.network.layers.length - 1 ? "de salida" : `oculta ${layerIndex}`}. Siguiente capa en la próxima pulsación.`);
+        } else {
+          state.network.training.phase = "update";
+          state.network.training.updateLayerIndex = 0;
+          setStatus("Todos los deltas están calculados. Las próximas pulsaciones actualizarán los pesos capa a capa.");
+        }
+
+        updateTrainingButtons();
+        drawNetwork();
+        return;
+      }
+
+      if (training.phase === "update") {
+        const layerIndex = training.updateLayerIndex;
+        applyWeightUpdate(layerIndex);
+
+        if (layerIndex < state.network.weights.length - 1) {
+          state.network.training.updateLayerIndex += 1;
+          setStatus(`Pesos actualizados entre las capas ${layerIndex} y ${layerIndex + 1}. Continúa para la siguiente matriz de pesos.`);
+        } else {
+          state.network.training.phase = "ready";
+          state.network.training.deltaLayerIndex = state.network.layerSizes.length - 1;
+          state.network.training.updateLayerIndex = 0;
+          state.network.training.forwardDone = false;
+          loadSampleForCurrentNetwork(state.network.sampleIndex + 1);
+          setStatus(`Actualización de pesos completada. La siguiente iteración usará ${state.network.sample.origin}.`);
+        }
+
+        updateTrainingButtons();
+        drawNetwork();
+      }
+    }
+
+    function drawSpeechBubble(group, x, y, text) {
+      const bubbleGroup = createSvgNode("g");
+      const bubbleWidth = 54;
+      const bubbleHeight = 24;
+      const bubbleX = x + 16;
+      const bubbleY = y - 36;
+
+      bubbleGroup.appendChild(createSvgNode("path", {
+        d: `
+          M ${bubbleX + 10} ${bubbleY}
+          H ${bubbleX + bubbleWidth - 10}
+          Q ${bubbleX + bubbleWidth} ${bubbleY} ${bubbleX + bubbleWidth} ${bubbleY + 10}
+          V ${bubbleY + bubbleHeight - 10}
+          Q ${bubbleX + bubbleWidth} ${bubbleY + bubbleHeight} ${bubbleX + bubbleWidth - 10} ${bubbleY + bubbleHeight}
+          H ${bubbleX + 20}
+          L ${bubbleX + 10} ${bubbleY + bubbleHeight + 8}
+          L ${bubbleX + 12} ${bubbleY + bubbleHeight}
+          H ${bubbleX + 10}
+          Q ${bubbleX} ${bubbleY + bubbleHeight} ${bubbleX} ${bubbleY + bubbleHeight - 10}
+          V ${bubbleY + 10}
+          Q ${bubbleX} ${bubbleY} ${bubbleX + 10} ${bubbleY}
+          Z
+        `.replace(/\s+/g, " ").trim(),
+        fill: "#fffdf8",
+        stroke: "#6f563d",
+        "stroke-width": "1.3"
+      }));
+
+      const bubbleText = createSvgNode("text", {
+        x: bubbleX + bubbleWidth / 2,
+        y: bubbleY + 15,
+        "text-anchor": "middle",
+        "font-size": "10",
+        "font-weight": "700",
+        fill: "#3f2d1d"
+      });
+      bubbleText.textContent = `δ ${text}`;
+      bubbleGroup.appendChild(bubbleText);
+      group.appendChild(bubbleGroup);
+      return bubbleGroup;
+    }
+
+    function triggerDownload(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function dataUrlToUint8Array(dataUrl) {
+      const base64 = dataUrl.split(",")[1] || "";
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return bytes;
+    }
+
+    function buildPdfFromJpeg(jpegBytes, width, height) {
+      const encoder = new TextEncoder();
+      const header = "%PDF-1.4\n";
+      const objects = [];
+      const pageWidth = 842;
+      const pageHeight = 595;
+      const margin = 28;
+      const scale = Math.min((pageWidth - margin * 2) / width, (pageHeight - margin * 2) / height);
+      const drawWidth = width * scale;
+      const drawHeight = height * scale;
+      const offsetX = (pageWidth - drawWidth) / 2;
+      const offsetY = (pageHeight - drawHeight) / 2;
+      const contentStream = `q\n${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${offsetX.toFixed(2)} ${offsetY.toFixed(2)} cm\n/Im0 Do\nQ`;
+
+      objects.push([encoder.encode("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n")]);
+      objects.push([encoder.encode("2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n")]);
+      objects.push([encoder.encode(`3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >> endobj\n`)]);
+      objects.push([
+        encoder.encode(`4 0 obj << /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >> stream\n`),
+        jpegBytes,
+        encoder.encode("\nendstream endobj\n")
+      ]);
+      objects.push([encoder.encode(`5 0 obj << /Length ${contentStream.length} >> stream\n${contentStream}\nendstream endobj\n`)]);
+
+      let offset = encoder.encode(header).length;
+      const parts = [encoder.encode(header)];
+      const xref = ["xref", `0 ${objects.length + 1}`, "0000000000 65535 f "];
+
+      for (let index = 0; index < objects.length; index += 1) {
+        xref.push(`${String(offset).padStart(10, "0")} 00000 n `);
+        for (const chunk of objects[index]) {
+          parts.push(chunk);
+          offset += chunk.length;
+        }
+      }
+
+      const trailerOffset = offset;
+      const trailer = `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${trailerOffset}\n%%EOF`;
+      parts.push(encoder.encode(`${xref.join("\n")}\n${trailer}`));
+      return new Blob(parts, { type: "application/pdf" });
+    }
+
+    function buildExportSvgString() {
+      const clone = networkSvg.cloneNode(true);
+      const viewBox = networkSvg.viewBox.baseVal;
+      const width = Math.max(1, Math.round(viewBox.width || networkSvg.clientWidth || 1200));
+      const height = Math.max(1, Math.round(viewBox.height || networkSvg.clientHeight || 800));
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+      clone.setAttribute("width", width);
+      clone.setAttribute("height", height);
+      clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+      const background = createSvgNode("rect", {
+        x: "0",
+        y: "0",
+        width: String(width),
+        height: String(height),
+        fill: SVG_COLORS.background
+      });
+      clone.insertBefore(background, clone.firstChild);
+      return new XMLSerializer().serializeToString(clone);
+    }
+
+    async function renderSvgToCanvas() {
+      const svgString = buildExportSvgString();
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      const image = new Image();
+      image.decoding = "async";
+
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = reject;
+        image.src = svgUrl;
+      });
+
+      const viewBox = networkSvg.viewBox.baseVal;
+      const width = Math.max(1, Math.round(viewBox.width || networkSvg.clientWidth || 1200));
+      const height = Math.max(1, Math.round(viewBox.height || networkSvg.clientHeight || 800));
+      const canvas = document.createElement("canvas");
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        URL.revokeObjectURL(svgUrl);
+        throw new Error("El navegador no pudo crear el contexto de renderizado.");
+      }
+      context.fillStyle = "#fffaf2";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(svgUrl);
+      return { canvas, width: canvas.width, height: canvas.height, svgString };
+    }
+
+    async function exportNetwork() {
+      if (!state.network) {
+        setStatus("No hay ninguna red creada para exportar.");
+        return;
+      }
+
+      const format = exportFormatInput.value;
+      const safePhase = (state.network.training.phase || "ready").replace(/[^a-z0-9_-]/gi, "_");
+      const fileName = `red_neuronal_${safePhase}`;
+
+      if (format === "svg") {
+        const svgString = buildExportSvgString();
+        triggerDownload(new Blob([svgString], { type: "image/svg+xml;charset=utf-8" }), `${fileName}.svg`);
+        setStatus("Exportación completada en formato SVG.");
+        return;
+      }
+
+      try {
+        const { canvas, width, height } = await renderSvgToCanvas();
+        if (format === "png") {
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+          if (!blob) {
+            throw new Error("No se pudo generar el PNG.");
+          }
+          triggerDownload(blob, `${fileName}.png`);
+          setStatus("Exportación completada en formato PNG.");
+          return;
+        }
+
+        const jpegBytes = dataUrlToUint8Array(canvas.toDataURL("image/jpeg", 0.95));
+        const pdfBlob = buildPdfFromJpeg(jpegBytes, width, height);
+        triggerDownload(pdfBlob, `${fileName}.pdf`);
+        setStatus("Exportación completada en formato PDF.");
+      } catch (error) {
+        setStatus(`No se pudo exportar la red: ${error.message}`);
+      }
+    }
+
+    function drawNetwork() {
+      networkSvg.innerHTML = "";
+      hideFormulaPopup();
+      if (!state.network) {
+        placeholder.style.display = "grid";
+        return;
+      }
+
+      placeholder.style.display = "none";
+
+      const width = networkSvg.clientWidth || networkSvg.parentElement.clientWidth;
+      const height = networkSvg.clientHeight || networkSvg.parentElement.clientHeight;
+      networkSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+      const layerCount = state.network.layers.length;
+      const showOutputColumns = state.network.training.forwardDone;
+      const leftMargin = 120;
+      const rightMargin = showOutputColumns
+        ? 220
+        : 120;
+      const usableWidth = Math.max(160, width - leftMargin - rightMargin);
+      const xSpacing = layerCount > 1 ? usableWidth / (layerCount - 1) : 0;
+      const positions = [];
+
+      state.network.layers.forEach((layer, layerIndex) => {
+        const ySpacing = layer.length > 1 ? (height - 160) / (layer.length - 1) : 0;
+        const layerPositions = layer.map((neuron, neuronIndex) => ({
+          ...neuron,
+          x: leftMargin + layerIndex * xSpacing,
+          y: layer.length === 1 ? height / 2 : 80 + neuronIndex * ySpacing
+        }));
+        positions.push(layerPositions);
+      });
+
+      const connectionLayer = createSvgNode("g");
+      const labelLayer = createSvgNode("g");
+      const nodeLayer = createSvgNode("g");
+      const sideValueLayer = createSvgNode("g");
+
+      state.network.weights.forEach((matrix, layerIndex) => {
+        matrix.forEach((row, sourceIndex) => {
+          row.forEach((weight, targetIndex) => {
+            const source = positions[layerIndex][sourceIndex];
+            const target = positions[layerIndex + 1][targetIndex];
+            const thickness = 1.2 + Math.abs(weight) * 4.8;
+            const color = weight >= 0 ? SVG_COLORS.positive : SVG_COLORS.negative;
+
+            connectionLayer.appendChild(createSvgNode("line", {
+              x1: source.x + 20,
+              y1: source.y,
+              x2: target.x - 20,
+              y2: target.y,
+              stroke: color,
+              "stroke-width": thickness.toFixed(2),
+              "stroke-linecap": "round",
+              opacity: "0.74"
+            }));
+
+            if (showWeightLabelsInput.checked) {
+              const label = createSvgNode("text", {
+                x: ((source.x + target.x) / 2).toFixed(1),
+                y: ((source.y + target.y) / 2 - 4).toFixed(1),
+                "text-anchor": "middle",
+                "font-size": "9",
+                fill: SVG_COLORS.ink
+              });
+              label.textContent = weight.toFixed(3);
+              labelLayer.appendChild(label);
+            }
+          });
+        });
+      });
+
+      const outputLayer = state.network.layers[state.network.layers.length - 1];
+      const outputPositions = positions[positions.length - 1];
+      if (showOutputColumns) {
+        const softmaxValues = softmax(outputLayer.map((neuron) => neuron.output ?? 0));
+        const barX = (outputPositions[0]?.x || (width - rightMargin)) + 64;
+        const barWidth = 118;
+        const barHeight = 18;
+
+        const header = createSvgNode("text", {
+          x: barX + barWidth / 2,
+          y: "34",
+          "text-anchor": "middle",
+          "font-size": "12",
+          "font-weight": "700",
+          fill: SVG_COLORS.softInk
+        });
+        header.textContent = "Softmax";
+        sideValueLayer.appendChild(header);
+
+        outputPositions.forEach((neuron, neuronIndex) => {
+          const softmaxValue = Math.max(0, Math.min(1, softmaxValues[neuronIndex] ?? 0));
+          const topY = neuron.y - barHeight / 2;
+
+          sideValueLayer.appendChild(createSvgNode("rect", {
+            x: barX,
+            y: topY,
+            width: barWidth,
+            height: barHeight,
+            rx: "9",
+            fill: "#efe4d5",
+            stroke: "#c8b396",
+            "stroke-width": "1"
+          }));
+
+          sideValueLayer.appendChild(createSvgNode("rect", {
+            x: barX,
+            y: topY,
+            width: Math.max(0, softmaxValue * barWidth),
+            height: barHeight,
+            rx: "9",
+            fill: SVG_COLORS.positive
+          }));
+
+          const valueLabel = createSvgNode("text", {
+            x: barX + barWidth / 2,
+            y: neuron.y + 4,
+            "text-anchor": "middle",
+            "font-size": "11",
+            "font-weight": "700",
+            fill: softmaxValue > 0.55 ? "#fffdf8" : SVG_COLORS.ink
+          });
+          valueLabel.textContent = formatNumber(softmaxValue, 3);
+          sideValueLayer.appendChild(valueLabel);
+
+          if ((state.network.sample.target[neuronIndex] ?? 0) > 0.5) {
+            const check = createSvgNode("text", {
+              x: barX + barWidth + 22,
+              y: neuron.y + 5,
+              "text-anchor": "middle",
+              "font-size": "16",
+              "font-weight": "700",
+              fill: SVG_COLORS.positive
+            });
+            check.textContent = "✓";
+            sideValueLayer.appendChild(check);
+          }
+        });
+      }
+
+      const lossInfo = computeLoss();
+      if (lossInfo) {
+        const lossBoxWidth = 176;
+        const lossBoxHeight = 58;
+        const lossBoxX = (width - lossBoxWidth) / 2;
+        const lossBoxY = height - lossBoxHeight - 18;
+
+        sideValueLayer.appendChild(createSvgNode("rect", {
+          x: lossBoxX,
+          y: lossBoxY,
+          width: lossBoxWidth,
+          height: lossBoxHeight,
+          rx: "16",
+          fill: SVG_COLORS.lossBg,
+          stroke: "#5e4788",
+          "stroke-width": "1.5",
+          opacity: "0.96"
+        }));
+
+        const lossTitle = createSvgNode("text", {
+          x: lossBoxX + lossBoxWidth / 2,
+          y: lossBoxY + 22,
+          "text-anchor": "middle",
+          "font-size": "13",
+          "font-weight": "700",
+          fill: SVG_COLORS.lossText
+        });
+        lossTitle.textContent = lossInfo.label;
+        sideValueLayer.appendChild(lossTitle);
+
+        const lossValue = createSvgNode("text", {
+          x: lossBoxX + lossBoxWidth / 2,
+          y: lossBoxY + 43,
+          "text-anchor": "middle",
+          "font-size": "18",
+          "font-weight": "700",
+          fill: SVG_COLORS.lossText
+        });
+        lossValue.textContent = formatNumber(lossInfo.value, 4);
+        sideValueLayer.appendChild(lossValue);
+      }
+
+      positions.forEach((layer, layerIndex) => {
+        layer.forEach((neuron, neuronIndex) => {
+          const neuronGroup = createSvgNode("g");
+          const neuronHoverGroup = createSvgNode("g");
+
+          neuronHoverGroup.appendChild(createSvgNode("circle", {
+            cx: neuron.x,
+            cy: neuron.y,
+            r: "20",
+            fill: SVG_COLORS.nodeFill,
+            stroke: SVG_COLORS.nodeStroke,
+            "stroke-width": "2.2"
+          }));
+
+          if (layerIndex === 0) {
+            const inputLabel = createSvgNode("text", {
+              x: neuron.x,
+              y: neuron.y + 5,
+              "text-anchor": "middle",
+              "font-size": "11",
+              "font-weight": "700",
+              fill: "#1f1a14"
+            });
+            inputLabel.textContent = formatNumber(state.network.sample.input[neuronIndex], 2);
+            neuronHoverGroup.appendChild(inputLabel);
+          } else {
+            const netLabel = createSvgNode("text", {
+              x: neuron.x,
+              y: neuron.y - 3,
+              "text-anchor": "middle",
+              "font-size": "8",
+              "font-weight": "700",
+              fill: SVG_COLORS.negative
+            });
+            netLabel.textContent = formatNumber(neuron.net, 2);
+            neuronHoverGroup.appendChild(netLabel);
+
+            const outputLabel = createSvgNode("text", {
+              x: neuron.x,
+              y: neuron.y + 11,
+              "text-anchor": "middle",
+              "font-size": "8",
+              "font-weight": "700",
+              fill: SVG_COLORS.positive
+            });
+            outputLabel.textContent = formatNumber(neuron.output, 2);
+            neuronHoverGroup.appendChild(outputLabel);
+
+            bindFormulaHover(neuronHoverGroup, () => getNeuronFormulaHtml(layerIndex, neuronIndex));
+          }
+
+          neuronGroup.appendChild(neuronHoverGroup);
+
+          if (showDeltaBubblesInput.checked && layerIndex > 0) {
+            const bubbleGroup = drawSpeechBubble(neuronGroup, neuron.x, neuron.y, Number(neuron.delta).toFixed(3));
+            bindFormulaHover(bubbleGroup, () => getDeltaFormulaHtml(layerIndex, neuronIndex));
+          }
+
+          nodeLayer.appendChild(neuronGroup);
+        });
+
+        const title = createSvgNode("text", {
+          x: layer[0]?.x || 0,
+          y: "34",
+          "text-anchor": "middle",
+          "font-size": "14",
+          "font-weight": "700",
+          fill: SVG_COLORS.softInk
+        });
+
+        if (layerIndex === 0) {
+          title.textContent = "Entrada";
+        } else if (layerIndex === positions.length - 1) {
+          title.textContent = "Salida";
+        } else {
+          title.textContent = `Oculta ${layerIndex}`;
+        }
+        nodeLayer.appendChild(title);
+      });
+
+      networkSvg.append(connectionLayer, labelLayer, nodeLayer, sideValueLayer);
+    }
+
+    hiddenLayerCountInput.addEventListener("input", refreshHiddenLayerInputs);
+    problemTypeInput.addEventListener("change", syncProblemTypeUI);
+    classCountInput.addEventListener("input", syncProblemTypeUI);
+    createBtn.addEventListener("click", buildNetwork);
+    randomizeBtn.addEventListener("click", randomizeWeights);
+    forwardBtn.addEventListener("click", runForwardPass);
+    backwardBtn.addEventListener("click", runBackwardStep);
+    showDeltaBubblesInput.addEventListener("change", drawNetwork);
+    showWeightLabelsInput.addEventListener("change", drawNetwork);
+    exportBtn.addEventListener("click", exportNetwork);
+    openDatasetDialogBtn.addEventListener("click", () => datasetDialog.showModal());
+    confirmDatasetBtn.addEventListener("click", () => datasetDialog.close());
+    cancelDatasetBtn.addEventListener("click", () => datasetDialog.close());
+
+    datasetInput.addEventListener("change", async (event) => {
+      const [file] = event.target.files;
+      if (!file) {
+        state.dataset = null;
+        updateDatasetSummary();
+        return;
+      }
+
+      const text = await file.text();
+      state.dataset = parseCsv(text);
+      updateDatasetSummary();
+      setStatus(state.dataset
+        ? `CSV cargado: ${state.dataset.rowCount} filas y ${state.dataset.columnCount} columnas.`
+        : "No se pudo interpretar el CSV.");
+      if (state.dataset && state.network && state.network.training.phase === "ready") {
+        state.network.sampleIndex = 0;
+        state.network.sample = buildSampleFromDataset(state.network, 0);
+        setStatus(`CSV cargado: ${state.dataset.rowCount} filas y ${state.dataset.columnCount} columnas. La muestra activa de entrenamiento ha sido actualizada.`);
+        drawNetwork();
+      }
+      if (state.dataset) {
+        datasetDialog.close();
+      }
+    });
+
+    window.addEventListener("resize", drawNetwork);
+
+    refreshHiddenLayerInputs();
+    syncProblemTypeUI();
+    updateTrainingButtons();
+  </script>
+</body>
+</html>
