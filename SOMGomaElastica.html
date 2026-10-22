@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Goma elástica · SOM de Kohonen para el TSP</title>
+<style>
+/* ---------- Tokens de color (claro por defecto, oscuro según el visor) ---------- */
+:root{
+  --bg:#f3f5f9; --panel:#ffffff; --text:#1b2333; --muted:#5b667a; --border:#d9deea;
+  --accent:#3b4cca; --accent-text:#ffffff; --city:#d6336c; --net:#0b9f6e; --tour:#8b95a8;
+  --canvas:#fbfcff; --grid:#e6eaf3; --field:#f3f5f9;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1420; --panel:#171e2e; --text:#e6eaf4; --muted:#94a0b8; --border:#2a3349;
+    --accent:#7b8cff; --accent-text:#0f1420; --city:#ff6b9d; --net:#34e0a1; --tour:#5d6a86;
+    --canvas:#0c111c; --grid:#1a2236; --field:#0f1420;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1420; --panel:#171e2e; --text:#e6eaf4; --muted:#94a0b8; --border:#2a3349;
+  --accent:#7b8cff; --accent-text:#0f1420; --city:#ff6b9d; --net:#34e0a1; --tour:#5d6a86;
+  --canvas:#0c111c; --grid:#1a2236; --field:#0f1420;
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+header{padding:18px 24px 6px;max-width:1280px;margin:0 auto}
+h1{margin:0;font-size:1.5rem;font-weight:700;letter-spacing:-.01em}
+header p{margin:4px 0 0;color:var(--muted);max-width:75ch}
+.app{display:grid;grid-template-columns:320px 1fr;gap:18px;max-width:1280px;margin:0 auto;padding:14px 24px 28px}
+@media(max-width:860px){.app{grid-template-columns:1fr;padding:12px}header{padding:14px 12px 4px}}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.panel h2{margin:0 0 10px;font-size:.95rem;font-weight:700}
+.panel+.panel{margin-top:14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+.row label{color:var(--muted);font-size:.9rem}
+.row label b{color:var(--text);font-weight:600}
+input[type=number],select{width:104px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--field);color:var(--text);font:inherit}
+select{width:150px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+button{font:inherit;font-weight:600;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--field);color:var(--text);cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns .wide{grid-column:1/-1}
+.stage{display:flex;flex-direction:column;gap:14px;min-width:0}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.metric{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
+.metric span{display:block;color:var(--muted);font-size:.8rem}
+.metric strong{font-size:1.35rem;font-variant-numeric:tabular-nums}
+.canvas-wrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+canvas{display:block;width:100%;aspect-ratio:1/1;max-height:72vh;margin:0 auto;border-radius:8px;background:var(--canvas)}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:8px;color:var(--muted);font-size:.85rem}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+details{margin-top:14px}
+summary{cursor:pointer;font-weight:600}
+details p,details li{color:var(--muted);font-size:.9rem}
+code{font-family:Consolas,"Courier New",monospace;color:var(--text);background:var(--field);padding:1px 5px;border-radius:4px}
+.check{display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--muted);margin:8px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Goma elástica: un mapa de Kohonen resolviendo el viajante</h1>
+  <p>Un anillo de nodos se estira hacia las ciudades. Al converger, el orden de los nodos a lo largo del anillo define un recorrido.</p>
+</header>
+
+<main class="app">
+  <aside>
+    <section class="panel">
+      <h2>Problema</h2>
+      <div class="row"><label for="n">Ciudades (<b>N</b>)</label><input id="n" type="number" min="3" max="500" value="30"></div>
+      <div class="row"><label for="mSel">Nodos (<b>M</b>)</label>
+        <select id="mSel">
+          <option value="2.5" selected>2,5 × N</option><option value="2">2 × N</option>
+          <option value="3">3 × N</option><option value="5">5 × N</option><option value="custom">Personalizado</option>
+        </select></div>
+      <div class="row" id="mCustomRow" hidden><label for="mCustom">M personalizado</label><input id="mCustom" type="number" min="3" max="2000" value="60"></div>
+      <div class="row"><label>M actual</label><strong id="mShow">75</strong></div>
+      <button id="btnCities" style="width:100%">Regenerar ciudades</button>
+    </section>
+
+    <section class="panel">
+      <h2>Hiperparámetros de Kohonen</h2>
+      <div class="row"><label for="eta0">η₀ (tasa inicial)</label><input id="eta0" type="number" step="0.05" min="0.01" max="1" value="0.8"></div>
+      <div class="row"><label for="aEta">α<sub>η</sub> (decaimiento)</label><input id="aEta" type="number" step="0.001" min="0.5" max="1" value="0.99"></div>
+      <div class="row"><label for="sig0">σ₀ (vecindad)</label><input id="sig0" type="number" step="0.5" min="0.5" value="7.5"></div>
+      <div class="row"><label for="aSig">α<sub>σ</sub> (decaimiento)</label><input id="aSig" type="number" step="0.001" min="0.5" max="1" value="0.99"></div>
+      <label class="check"><input type="checkbox" id="autoSig" checked> σ₀ = M / 10 automático</label>
+    </section>
+
+    <section class="panel">
+      <h2>Ejecución</h2>
+      <div class="btns">
+        <button id="btnPlay" class="primary wide">▶ Play</button>
+        <button id="btnStep">Siguiente época</button>
+        <button id="btnReset">Reiniciar red</button>
+      </div>
+      <div class="row" style="margin-top:12px"><label for="fps">Velocidad</label><strong id="fpsShow">30 FPS</strong></div>
+      <input id="fps" type="range" min="1" max="60" value="30" aria-label="Velocidad en fotogramas por segundo">
+      <label class="check"><input type="checkbox" id="showTour"> Mostrar el recorrido de las ciudades</label>
+    </section>
+  </aside>
+
+  <div class="stage">
+    <div class="metrics">
+      <div class="metric"><span>Época</span><strong id="mEpoch">0</strong></div>
+      <div class="metric"><span>η actual</span><strong id="mEta">–</strong></div>
+      <div class="metric"><span>σ actual</span><strong id="mSigma">–</strong></div>
+      <div class="metric"><span>Longitud de la ruta</span><strong id="mTour">–</strong></div>
+      <div class="metric"><span>Longitud del anillo</span><strong id="mRing">–</strong></div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="cv" role="img" aria-label="Ciudades y anillo elástico de la red SOM"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--city)"></i>Ciudades</span>
+        <span><i class="dot" style="background:var(--net)"></i>Nodos y goma elástica (anillo cerrado)</span>
+        <span>Coordenadas normalizadas al cuadrado unidad</span>
+      </div>
+    </div>
+    <details class="panel">
+      <summary>¿Cómo funciona cada época?</summary>
+      <ol>
+        <li>Se barajan las ciudades. Para cada ciudad <code>c</code> se busca el nodo más cercano <code>j*</code> (BMU).</li>
+        <li>Todos los nodos se acercan a <code>c</code>, más cuanto más cerca estén de <code>j*</code> <em>a lo largo del anillo</em>:
+          <br><code>w<sub>j</sub> ← w<sub>j</sub> + η · exp(−d²/(2σ²)) · (c − w<sub>j</sub>)</code>, con <code>d = min(|j−j*|, M−|j−j*|)</code>.</li>
+        <li>Al acabar la época: <code>η ← η·α<sub>η</sub></code> y <code>σ ← máx(σ·α<sub>σ</sub>, 0,5)</code>.</li>
+      </ol>
+      <p>Con σ grande la goma se mueve como un bloque; al reducirse σ cada tramo se pega a «su» ciudad. La longitud de la ruta se calcula ordenando las ciudades según el índice de su nodo ganador.</p>
+    </details>
+  </div>
+</main>
+
+<script>
+"use strict";
+/* ============================================================
+   Estado global. Coordenadas en [0,1]²; se escalan al dibujar.
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const S = {
+  cities: [],      // [{x,y}]
+  w: [],           // pesos de los nodos [{x,y}], topología de anillo
+  M: 0,            // número de nodos
+  epoch: 0, eta: 0, sigma: 0,
+  running: false, acc: 0, lastT: 0
+};
+
+/* ---------- Utilidades ---------- */
+const clampInt = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(+v) || lo));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function shuffle(a) {                       // Fisher-Yates
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+const readNum = (id, def) => { const v = parseFloat($(id).value); return isFinite(v) ? v : def; };
+
+/* ---------- Inicialización ---------- */
+function generateCities() {
+  const n = clampInt($('n').value, 3, 500);
+  $('n').value = n;
+  S.cities = Array.from({ length: n }, () => ({ x: 0.06 + 0.88 * Math.random(), y: 0.06 + 0.88 * Math.random() }));
+  resetNet();
+}
+
+function computeM() {
+  const sel = $('mSel').value;
+  const N = S.cities.length;
+  return sel === 'custom' ? clampInt($('mCustom').value, 3, 2000) : Math.max(3, Math.round(parseFloat(sel) * N));
+}
+
+/* Reinicia la red: pesos en una circunferencia pequeña centrada; época 0 */
+function resetNet() {
+  setRunning(false);
+  S.M = computeM();
+  $('mShow').textContent = S.M;
+  $('mCustomRow').hidden = $('mSel').value !== 'custom';
+  if ($('autoSig').checked) $('sig0').value = Math.max(0.5, S.M / 10).toFixed(1);
+  const r = 0.08;
+  S.w = Array.from({ length: S.M }, (_, j) => {
+    const t = 2 * Math.PI * j / S.M;
+    return { x: 0.5 + r * Math.cos(t), y: 0.5 + r * Math.sin(t) };
+  });
+  S.epoch = 0;
+  S.eta = readNum('eta0', 0.8);
+  S.sigma = Math.max(0.5, readNum('sig0', S.M / 10));
+  refresh();
+}
+
+/* ============================================================
+   Algoritmo SOM (goma elástica)
+   ============================================================ */
+/* Nodo ganador (BMU): el más cercano a la ciudad c en el plano */
+function findBMU(c) {
+  let best = 0, bd = Infinity;
+  for (let j = 0; j < S.M; j++) {
+    const dx = S.w[j].x - c.x, dy = S.w[j].y - c.y, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = j; }
+  }
+  return best;
+}
+
+/* Una época completa: todas las ciudades en orden aleatorio + decaimiento */
+function stepEpoch() {
+  const M = S.M, w = S.w, twoSig2 = 2 * S.sigma * S.sigma;
+  for (const c of shuffle(S.cities.slice())) {
+    const b = findBMU(c);
+    for (let j = 0; j < M; j++) {
+      const diff = Math.abs(j - b);
+      const d = Math.min(diff, M - diff);            // distancia circular en el anillo
+      const h = Math.exp(-(d * d) / twoSig2);        // función de vecindad gaussiana
+      const k = S.eta * h;
+      w[j].x += k * (c.x - w[j].x);
+      w[j].y += k * (c.y - w[j].y);
+    }
+  }
+  S.eta *= readNum('aEta', 0.99);
+  S.sigma = Math.max(S.sigma * readNum('aSig', 0.99), 0.5);
+  S.epoch++;
+}
+
+/* ---------- Métricas ---------- */
+function tourOrder() {   // ciudades ordenadas según el índice de su nodo ganador
+  return S.cities.map(c => ({ c, b: findBMU(c) })).sort((p, q) => p.b - q.b).map(p => p.c);
+}
+function pathLength(pts) {
+  let L = 0;
+  for (let i = 0; i < pts.length; i++) L += dist(pts[i], pts[(i + 1) % pts.length]);
+  return L;
+}
+
+/* ============================================================
+   Dibujado
+   ============================================================ */
+const cv = $('cv'), ctx = cv.getContext('2d');
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1, s = cv.clientWidth;
+  if (!s) return;
+  cv.width = cv.height = Math.round(s * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function draw() {
+  const css = getComputedStyle(document.documentElement), col = n => css.getPropertyValue(n).trim();
+  const W = cv.clientWidth, P = x => x * W;
+  ctx.clearRect(0, 0, W, W);
+
+  // Rejilla suave de fondo
+  ctx.strokeStyle = col('--grid'); ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 1; i < 10; i++) { ctx.moveTo(P(i / 10), 0); ctx.lineTo(P(i / 10), W); ctx.moveTo(0, P(i / 10)); ctx.lineTo(W, P(i / 10)); }
+  ctx.stroke();
+
+  // Recorrido de ciudades (opcional)
+  if ($('showTour').checked && S.epoch > 0) {
+    const t = tourOrder();
+    ctx.strokeStyle = col('--tour'); ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5; ctx.beginPath();
+    t.forEach((c, i) => i ? ctx.lineTo(P(c.x), P(c.y)) : ctx.moveTo(P(c.x), P(c.y)));
+    ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Goma elástica: anillo cerrado
+  ctx.strokeStyle = col('--net'); ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath();
+  S.w.forEach((p, i) => i ? ctx.lineTo(P(p.x), P(p.y)) : ctx.moveTo(P(p.x), P(p.y)));
+  ctx.closePath(); ctx.stroke();
+
+  // Nodos
+  ctx.fillStyle = col('--net');
+  for (const p of S.w) { ctx.beginPath(); ctx.arc(P(p.x), P(p.y), 3, 0, 6.2832); ctx.fill(); }
+
+  // Ciudades (encima, con borde para destacarlas)
+  ctx.fillStyle = col('--city'); ctx.strokeStyle = col('--canvas'); ctx.lineWidth = 2;
+  for (const c of S.cities) { ctx.beginPath(); ctx.arc(P(c.x), P(c.y), 5.5, 0, 6.2832); ctx.fill(); ctx.stroke(); }
+}
+
+/* Actualiza métricas y lienzo */
+function refresh() {
+  $('mEpoch').textContent = S.epoch;
+  $('mEta').textContent = S.eta.toFixed(4);
+  $('mSigma').textContent = S.sigma.toFixed(3);
+  $('mRing').textContent = pathLength(S.w).toFixed(3);
+  $('mTour').textContent = S.epoch > 0 ? pathLength(tourOrder()).toFixed(3) : '–';
+  draw();
+}
+
+/* ============================================================
+   Ciclo de animación (requestAnimationFrame con FPS ajustable)
+   ============================================================ */
+function setRunning(on) {
+  S.running = on; S.acc = 0; S.lastT = 0;
+  $('btnPlay').textContent = on ? '⏸ Pausa' : '▶ Play';
+}
+function loop(t) {
+  if (S.running) {
+    if (!S.lastT) S.lastT = t;
+    S.acc += t - S.lastT; S.lastT = t;
+    const interval = 1000 / +$('fps').value;
+    let steps = 0;
+    while (S.acc >= interval && steps < 4) { stepEpoch(); S.acc -= interval; steps++; }
+    if (S.acc > interval) S.acc = 0;
+    if (steps) refresh();
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ---------- Eventos ---------- */
+$('btnPlay').onclick = () => setRunning(!S.running);
+$('btnStep').onclick = () => { setRunning(false); stepEpoch(); refresh(); };
+$('btnReset').onclick = resetNet;
+$('btnCities').onclick = generateCities;
+['mSel', 'mCustom', 'eta0', 'sig0', 'autoSig'].forEach(id => $(id).addEventListener('change', resetNet));
+$('n').addEventListener('change', generateCities);
+$('sig0').addEventListener('input', () => { $('autoSig').checked = false; });
+$('fps').addEventListener('input', () => { $('fpsShow').textContent = $('fps').value + ' FPS'; });
+$('showTour').addEventListener('change', draw);
+window.addEventListener('resize', () => { fitCanvas(); draw(); });
+if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+
+/* ---------- Arranque ---------- */
+fitCanvas();
+generateCities();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
