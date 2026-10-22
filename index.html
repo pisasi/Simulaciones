@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Simulador de autómatas celulares de Wolfram</title>
+<style>
+    :root {
+        --bg: #f2efe8;
+        --panel: rgba(255, 252, 246, 0.9);
+        --panel-strong: #fffaf1;
+        --border: rgba(85, 71, 50, 0.18);
+        --ink: #201b16;
+        --muted: #6f6358;
+        --accent: #9a4d2b;
+        --accent-soft: #f1d8c5;
+        --shadow: 0 20px 45px rgba(61, 44, 25, 0.14);
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        margin: 0;
+        min-height: 100%;
+    }
+
+    body {
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+            radial-gradient(circle at top left, rgba(255, 255, 255, 0.95) 0%, transparent 24%),
+            radial-gradient(circle at bottom right, rgba(234, 210, 185, 0.8) 0%, transparent 28%),
+            linear-gradient(135deg, #eee7db, var(--bg));
+    }
+
+    button,
+    input {
+        font: inherit;
+    }
+
+    .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(300px, 360px) 1fr;
+    }
+
+    .sidebar {
+        padding: 24px;
+        border-right: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 250, 242, 0.95), rgba(244, 235, 220, 0.95));
+        box-shadow: var(--shadow);
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero {
+        margin-bottom: 20px;
+    }
+
+    .hero h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.8rem, 4vw, 2.2rem);
+        line-height: 1.05;
+    }
+
+    .hero p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+    }
+
+    .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        padding: 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 10px 24px rgba(70, 52, 31, 0.08);
+        backdrop-filter: blur(10px);
+    }
+
+    .card h2 {
+        margin: 0 0 14px;
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+    }
+
+    .field {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 12px;
+    }
+
+    .field:last-child {
+        margin-bottom: 0;
+    }
+
+    .field label {
+        font-weight: 700;
+        font-size: 0.94rem;
+    }
+
+    .field input {
+        width: 100%;
+        border: 1px solid rgba(112, 90, 58, 0.28);
+        border-radius: 14px;
+        padding: 11px 12px;
+        background: var(--panel-strong);
+        color: var(--ink);
+    }
+
+    .field small {
+        color: var(--muted);
+        line-height: 1.35;
+    }
+
+    .actions {
+        display: grid;
+        gap: 10px;
+    }
+
+    .actions button {
+        border: 0;
+        border-radius: 14px;
+        padding: 12px 14px;
+        cursor: pointer;
+        font-weight: 700;
+        transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+    }
+
+    .actions button:hover:not(:disabled) {
+        transform: translateY(-1px);
+    }
+
+    .actions button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+    }
+
+    .primary {
+        color: #fff;
+        background: linear-gradient(135deg, #1b1b1b, #4b4b4b);
+        box-shadow: 0 12px 20px rgba(33, 33, 33, 0.22);
+    }
+
+    .secondary {
+        color: #fff;
+        background: linear-gradient(135deg, #965237, #bc7148);
+        box-shadow: 0 12px 20px rgba(150, 82, 55, 0.2);
+    }
+
+    .ghost {
+        color: var(--ink);
+        background: #efe6d8;
+        box-shadow: 0 12px 20px rgba(112, 90, 58, 0.12);
+    }
+
+    .status {
+        display: grid;
+        gap: 10px;
+    }
+
+    .status-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: baseline;
+        font-size: 0.95rem;
+    }
+
+    .status-row strong {
+        font-size: 1.1rem;
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+
+    .message {
+        min-height: 1.4em;
+        color: var(--muted);
+        line-height: 1.4;
+    }
+
+    .main {
+        padding: 20px;
+        overflow: auto;
+    }
+
+    .canvas-card {
+        min-height: calc(100vh - 40px);
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 16px;
+        padding: 18px;
+        border-radius: 28px;
+        background: rgba(255, 252, 247, 0.72);
+        border: 1px solid var(--border);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), var(--shadow);
+    }
+
+    .canvas-topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .canvas-topbar h2 {
+        margin: 0;
+        font-size: 1.15rem;
+    }
+
+    .legend {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 0.92rem;
+    }
+
+    .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .swatch {
+        width: 15px;
+        height: 15px;
+        border-radius: 4px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .swatch.black {
+        background: #000;
+    }
+
+    .swatch.white {
+        background: #fff;
+    }
+
+    .canvas-wrap {
+        position: relative;
+        min-height: 420px;
+        border-radius: 22px;
+        overflow: hidden;
+        background:
+            linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(243, 239, 232, 0.92));
+        border: 1px solid rgba(112, 90, 58, 0.16);
+    }
+
+    canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: #fff;
+    }
+
+    @media (max-width: 900px) {
+        .app {
+            grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+            border-right: 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .canvas-card {
+            min-height: 70vh;
+        }
+    }
+</style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <section class="hero">
+            <h1>Autómatas celulares 1D</h1>
+            <p>Explora reglas de Wolfram entre 0 y 255 y observa cómo evoluciona el patrón fila a fila.</p>
+        </section>
+
+        <section class="card">
+            <h2>Configuración</h2>
+            <div class="field">
+                <label for="ruleInput">Regla (0-255)</label>
+                <input id="ruleInput" type="number" min="0" max="255" value="30" />
+            </div>
+            <div class="field">
+                <label for="columnsInput">Tamaño</label>
+                <input id="columnsInput" type="number" min="5" max="2000" value="300" />
+            </div>
+            <div class="field">
+                <label for="initialStateInput">Estado inicial opcional</label>
+                <input id="initialStateInput" type="text" inputmode="numeric" placeholder="Ej: 0001000" />
+                <small>Si lo dejas vacío, se usa todo a 0 salvo la celda central a 1. Si lo rellenas, su longitud debe coincidir con Tamaño.</small>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Controles</h2>
+            <div class="actions">
+                <button id="stepButton" class="secondary" type="button">Paso</button>
+                <button id="runButton" class="primary" type="button">Ejecutar</button>
+                <button id="applyInitialButton" class="ghost" type="button">Aplicar estado inicial</button>
+                <button id="useLastAsInitialButton" class="ghost" type="button">Usar última fila como estado inicial</button>
+            </div>
+        </section>
+
+        <section class="card status">
+            <h2>Estado</h2>
+            <div class="status-row">
+                <span>Iteración actual</span>
+                <strong id="iterationLabel">0</strong>
+            </div>
+            <div class="status-row">
+                <span>Filas generadas</span>
+                <strong id="rowsLabel">1</strong>
+            </div>
+            <div class="badge" id="ruleBinaryLabel">Regla 30 → 00011110</div>
+            <div class="message" id="message"></div>
+        </section>
+    </aside>
+
+    <main class="main">
+        <section class="canvas-card">
+            <div class="canvas-topbar">
+                <h2>Evolución temporal</h2>
+                <div class="legend">
+                    <span><i class="swatch black"></i> Activa (1)</span>
+                    <span><i class="swatch white"></i> Inactiva (0)</span>
+                </div>
+            </div>
+            <div class="canvas-wrap" id="canvasWrap">
+                <canvas id="automatonCanvas"></canvas>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+(() => {
+    const ui = {
+        ruleInput: document.getElementById("ruleInput"),
+        columnsInput: document.getElementById("columnsInput"),
+        initialStateInput: document.getElementById("initialStateInput"),
+        stepButton: document.getElementById("stepButton"),
+        runButton: document.getElementById("runButton"),
+        applyInitialButton: document.getElementById("applyInitialButton"),
+        useLastAsInitialButton: document.getElementById("useLastAsInitialButton"),
+        iterationLabel: document.getElementById("iterationLabel"),
+        rowsLabel: document.getElementById("rowsLabel"),
+        ruleBinaryLabel: document.getElementById("ruleBinaryLabel"),
+        message: document.getElementById("message"),
+        canvasWrap: document.getElementById("canvasWrap"),
+        canvas: document.getElementById("automatonCanvas")
+    };
+
+    const ctx = ui.canvas.getContext("2d");
+
+    const DEFAULT_COLUMNS = 300;
+
+    const state = {
+        rule: 30,
+        width: DEFAULT_COLUMNS,
+        generations: [],
+        isRunning: false,
+        runToken: 0,
+        frameRequestId: null,
+        cellSize: 1
+    };
+
+    function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    function sanitizeRule() {
+        const value = Number.parseInt(ui.ruleInput.value, 10);
+        if (Number.isNaN(value)) {
+            ui.ruleInput.value = state.rule;
+            return state.rule;
+        }
+        const safeValue = clamp(value, 0, 255);
+        ui.ruleInput.value = safeValue;
+        return safeValue;
+    }
+
+    function sanitizeColumns() {
+        const value = Number.parseInt(ui.columnsInput.value, 10);
+        if (Number.isNaN(value)) {
+            ui.columnsInput.value = state.width;
+            return state.width;
+        }
+        const safeValue = clamp(value, 5, 2000);
+        ui.columnsInput.value = safeValue;
+        return safeValue;
+    }
+
+    function parseInitialState(width) {
+        const rawValue = ui.initialStateInput.value.trim();
+        if (!rawValue) {
+            const row = new Array(width).fill(0);
+            row[Math.floor(width / 2)] = 1;
+            return row;
+        }
+
+        if (!/^[01]+$/.test(rawValue)) {
+            throw new Error("El estado inicial sólo puede contener 0 y 1.");
+        }
+
+        if (rawValue.length !== width) {
+            throw new Error("La longitud del estado inicial debe coincidir con Tamaño.");
+        }
+
+        return rawValue.split("").map((digit) => Number(digit));
+    }
+
+    function ruleToBinary(rule) {
+        return rule.toString(2).padStart(8, "0");
+    }
+
+    function nextGeneration(currentRow, rule) {
+        const nextRow = new Array(currentRow.length).fill(0);
+        for (let index = 0; index < currentRow.length; index += 1) {
+            const left = index > 0 ? currentRow[index - 1] : 0;
+            const center = currentRow[index];
+            const right = index < currentRow.length - 1 ? currentRow[index + 1] : 0;
+            const neighborhood = (left << 2) | (center << 1) | right;
+            nextRow[index] = (rule >> neighborhood) & 1;
+        }
+        return nextRow;
+    }
+
+    function fitCanvas() {
+        const rows = Math.max(state.generations.length, state.width + 1);
+        const width = Math.max(state.width, 1);
+        const wrapWidth = Math.max(ui.canvasWrap.clientWidth, 320);
+        const wrapHeight = Math.max(ui.canvasWrap.clientHeight, 320);
+        const cellWidth = wrapWidth / width;
+        const cellHeight = wrapHeight / rows;
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        const cellSize = Math.max(0.5, Math.min(cellWidth, cellHeight));
+        const logicalWidth = Math.max(1, Math.round(width * cellSize));
+        const logicalHeight = Math.max(1, Math.round(rows * cellSize));
+
+        state.cellSize = cellSize;
+        ui.canvas.width = Math.max(1, Math.round(logicalWidth * devicePixelRatio));
+        ui.canvas.height = Math.max(1, Math.round(logicalHeight * devicePixelRatio));
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        ui.canvas.style.width = "100%";
+        ui.canvas.style.height = "100%";
+    }
+
+    function drawGenerations() {
+        fitCanvas();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, ui.canvas.width, ui.canvas.height);
+
+        for (let rowIndex = 0; rowIndex < state.generations.length; rowIndex += 1) {
+            const row = state.generations[rowIndex];
+            for (let colIndex = 0; colIndex < row.length; colIndex += 1) {
+                ctx.fillStyle = row[colIndex] === 1 ? "#000000" : "#ffffff";
+                ctx.fillRect(
+                    colIndex * state.cellSize,
+                    rowIndex * state.cellSize,
+                    state.cellSize,
+                    state.cellSize
+                );
+            }
+        }
+    }
+
+    function updateStatus(message = "") {
+        const currentIteration = Math.max(0, state.generations.length - 1);
+        ui.iterationLabel.textContent = String(currentIteration);
+        ui.rowsLabel.textContent = String(state.generations.length);
+        ui.ruleBinaryLabel.textContent = `Regla ${state.rule} -> ${ruleToBinary(state.rule)}`;
+        ui.message.textContent = message;
+        const reachedLimit = currentIteration >= state.width;
+        ui.stepButton.disabled = state.isRunning || reachedLimit;
+        ui.runButton.disabled = state.isRunning || reachedLimit;
+        ui.applyInitialButton.disabled = state.isRunning;
+        ui.useLastAsInitialButton.disabled = state.isRunning || state.generations.length === 0;
+    }
+
+    function stopRunning() {
+        state.isRunning = false;
+        if (state.frameRequestId !== null) {
+            cancelAnimationFrame(state.frameRequestId);
+            state.frameRequestId = null;
+        }
+    }
+
+    function readConfiguration() {
+        const rule = sanitizeRule();
+        const columns = sanitizeColumns();
+        const initialRow = parseInitialState(columns);
+        return { rule, columns, initialRow };
+    }
+
+    function initializeSimulation(message = "") {
+        state.runToken += 1;
+        stopRunning();
+        const config = readConfiguration();
+
+        state.rule = config.rule;
+        state.width = config.columns;
+        state.generations = [config.initialRow];
+
+        drawGenerations();
+        updateStatus(message);
+    }
+
+    function tryInitialize(message = "") {
+        try {
+            initializeSimulation(message);
+        } catch (error) {
+            stopRunning();
+            state.runToken += 1;
+            updateStatus(error.message);
+        }
+    }
+
+    function advanceOneStep() {
+        if (state.generations.length - 1 >= state.width) {
+            updateStatus("Se alcanzó el número de iteraciones definido por Tamaño.");
+            return false;
+        }
+        const currentRow = state.generations[state.generations.length - 1];
+        state.generations.push(nextGeneration(currentRow, state.rule));
+        drawGenerations();
+        updateStatus("");
+        return true;
+    }
+
+    function runToMaxIterations() {
+        if (state.isRunning || state.generations.length - 1 >= state.width) {
+            if (!state.isRunning) {
+                updateStatus("Se alcanzó el número de iteraciones definido por Tamaño.");
+            }
+            return;
+        }
+
+        state.isRunning = true;
+        state.runToken += 1;
+        const token = state.runToken;
+        updateStatus("Generando iteraciones...");
+
+        const chunkSize = 24;
+
+        function processChunk() {
+            if (token !== state.runToken) {
+                stopRunning();
+                return;
+            }
+
+            let steps = 0;
+            while (steps < chunkSize && state.generations.length - 1 < state.width) {
+                const currentRow = state.generations[state.generations.length - 1];
+                state.generations.push(nextGeneration(currentRow, state.rule));
+                steps += 1;
+            }
+
+            drawGenerations();
+
+            if (state.generations.length - 1 >= state.width) {
+                stopRunning();
+                updateStatus("Simulación completa.");
+                return;
+            }
+
+            updateStatus("Generando iteraciones...");
+            state.frameRequestId = requestAnimationFrame(processChunk);
+        }
+
+        state.frameRequestId = requestAnimationFrame(processChunk);
+    }
+
+    function attachEvents() {
+        ui.stepButton.addEventListener("click", () => {
+            advanceOneStep();
+        });
+
+        ui.runButton.addEventListener("click", () => {
+            runToMaxIterations();
+        });
+
+        ui.applyInitialButton.addEventListener("click", () => {
+            tryInitialize("Estado inicial aplicado.");
+        });
+
+        ui.useLastAsInitialButton.addEventListener("click", () => {
+            const lastRow = state.generations[state.generations.length - 1];
+            if (!lastRow) {
+                updateStatus("No hay filas disponibles para usar como estado inicial.");
+                return;
+            }
+            ui.initialStateInput.value = lastRow.join("");
+            ui.columnsInput.value = String(lastRow.length);
+            tryInitialize("La última fila se estableció como estado inicial.");
+        });
+
+        ui.ruleInput.addEventListener("change", () => {
+            tryInitialize("Regla actualizada y simulación reiniciada.");
+        });
+
+        ui.columnsInput.addEventListener("change", () => {
+            tryInitialize("Tamaño del autómata actualizado.");
+        });
+
+        ui.initialStateInput.addEventListener("change", () => {
+            tryInitialize("Estado inicial actualizado.");
+        });
+
+        window.addEventListener("resize", () => {
+            drawGenerations();
+        });
+    }
+
+    attachEvents();
+    tryInitialize("Listo para simular reglas como 30, 90 o 110.");
+})();
+</script>
+</body>
+</html>
